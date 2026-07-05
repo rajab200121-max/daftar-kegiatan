@@ -294,6 +294,35 @@
   }
   #jamInput:focus{ outline: 1px solid var(--accent); }
 
+  #tanggalInput{
+    border: none;
+    background: var(--line-soft);
+    color: var(--text-dim);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 20px;
+    flex-shrink: 0;
+    cursor: pointer;
+    width: 130px;
+  }
+  #tanggalInput:focus{ outline: 1px solid var(--accent); }
+
+  .section-title{
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 44px 0 4px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+  .upcoming-date{
+    font-size: 12px;
+    color: var(--text-faint);
+    text-transform: capitalize;
+    margin: 20px 0 6px;
+  }
+  .upcoming-date:first-child{ margin-top: 16px; }
+
   @media (max-width: 480px){
     .hero-date .num{ font-size: 48px; }
     .add-row{ flex-wrap: wrap; }
@@ -330,6 +359,7 @@
   <div class="add-row">
     <div class="add-plus">+</div>
     <input type="text" id="taskInput" placeholder="Tambah kegiatan..." maxlength="120">
+    <input type="date" id="tanggalInput">
     <input type="time" id="jamInput">
     <select id="waktuSelect">
       <option value="">tanpa waktu</option>
@@ -338,6 +368,11 @@
       <option value="sore">sore</option>
       <option value="malam">malam</option>
     </select>
+  </div>
+
+  <div id="upcomingSection" style="display:none;">
+    <div class="section-title">Mendatang</div>
+    <div id="upcomingRoot"></div>
   </div>
 
 </div>
@@ -413,6 +448,9 @@
     var h = d.getHours();
     var sapaan = h < 11 ? 'Selamat pagi' : (h < 15 ? 'Selamat siang' : (h < 18 ? 'Selamat sore' : 'Selamat malam'));
     document.getElementById('greeting').textContent = sapaan;
+    var tanggalInput = document.getElementById('tanggalInput');
+    tanggalInput.min = todayStr();
+    if(!tanggalInput.value) tanggalInput.value = todayStr();
   }
   setHero();
 
@@ -431,7 +469,7 @@
     var today = todayStr();
     var changed = false;
     tasks.forEach(function(t){
-      if(!t.done && t.date !== today){
+      if(!t.done && t.date < today){
         t.date = today;
         t.jam = '';
         changed = true;
@@ -465,17 +503,20 @@
     var waktu = document.getElementById('waktuSelect').value;
     var jamInput = document.getElementById('jamInput');
     var jam = jamInput.value || '';
+    var tanggalInput = document.getElementById('tanggalInput');
+    var tanggal = tanggalInput.value || todayStr();
     tasks.push({
       id: uid(),
       text: text,
       waktu: waktu,
       jam: jam,
-      date: todayStr(),
+      date: tanggal,
       done: false,
       createdAt: nowTimeStr()
     });
     input.value = '';
     jamInput.value = '';
+    tanggalInput.value = todayStr();
     saveTasks();
     render();
   }
@@ -492,6 +533,93 @@
     tasks = tasks.filter(function(x){ return x.id !== id; });
     saveTasks();
     render();
+  }
+
+  function createRowEl(t, showDate){
+    var currentTime = nowTimeStr();
+    var row = document.createElement('div');
+    row.className = 'row';
+
+    var check = document.createElement('div');
+    check.className = 'check' + (t.done ? ' done' : '');
+    check.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="4,13 9,18 20,6"></polyline></svg>';
+    check.onclick = function(){ toggleTask(t.id); };
+    row.appendChild(check);
+
+    var timeBadge = document.createElement('span');
+    if(t.jam){
+      var overdue = !showDate && !t.done && t.jam < currentTime;
+      timeBadge.className = 'time-badge' + (overdue ? ' overdue' : '');
+      timeBadge.textContent = t.jam;
+    }else{
+      timeBadge.className = 'time-badge empty-slot';
+      timeBadge.textContent = '\u00b7\u00b7:\u00b7\u00b7';
+    }
+    row.appendChild(timeBadge);
+
+    var text = document.createElement('div');
+    text.className = 'row-text' + (t.done ? ' done' : '');
+    text.textContent = t.text;
+    row.appendChild(text);
+
+    if(t.waktu){
+      var tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = t.waktu;
+      row.appendChild(tag);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '\u00d7';
+    del.title = 'hapus';
+    del.onclick = function(){ deleteTask(t.id); };
+    row.appendChild(del);
+
+    return row;
+  }
+
+  function formatTanggalPanjang(dateStr){
+    var parts = dateStr.split('-').map(Number);
+    var d = new Date(parts[0], parts[1]-1, parts[2]);
+    return HARI[d.getDay()] + ', ' + d.getDate() + ' ' + BULAN_FULL[d.getMonth()];
+  }
+
+  function renderUpcoming(){
+    var today = todayStr();
+    var upcoming = tasks.filter(function(t){ return t.date > today; });
+    var section = document.getElementById('upcomingSection');
+    var root = document.getElementById('upcomingRoot');
+    root.innerHTML = '';
+
+    if(upcoming.length === 0){
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    var dates = [];
+    upcoming.forEach(function(t){ if(dates.indexOf(t.date) === -1) dates.push(t.date); });
+    dates.sort();
+
+    dates.forEach(function(dateStr){
+      var head = document.createElement('div');
+      head.className = 'upcoming-date';
+      head.textContent = formatTanggalPanjang(dateStr);
+      root.appendChild(head);
+
+      var group = upcoming.filter(function(t){ return t.date === dateStr; })
+        .sort(function(a, b){
+          if(!a.jam && !b.jam) return 0;
+          if(!a.jam) return 1;
+          if(!b.jam) return -1;
+          return a.jam.localeCompare(b.jam);
+        });
+
+      group.forEach(function(t){
+        root.appendChild(createRowEl(t, true));
+      });
+    });
   }
 
   function render(){
@@ -518,8 +646,6 @@
       return a.jam.localeCompare(b.jam);
     });
 
-    var currentTime = nowTimeStr();
-
     var root = document.getElementById('listRoot');
     root.innerHTML = '';
 
@@ -528,51 +654,13 @@
       empty.className = 'empty';
       empty.textContent = total === 0 ? 'Belum ada kegiatan. Tambahkan satu di bawah.' : 'Tidak ada kegiatan pada filter ini.';
       root.appendChild(empty);
-      return;
+    }else{
+      filtered.forEach(function(t){
+        root.appendChild(createRowEl(t, false));
+      });
     }
 
-    filtered.forEach(function(t){
-      var row = document.createElement('div');
-      row.className = 'row';
-
-      var check = document.createElement('div');
-      check.className = 'check' + (t.done ? ' done' : '');
-      check.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="4,13 9,18 20,6"></polyline></svg>';
-      check.onclick = function(){ toggleTask(t.id); };
-      row.appendChild(check);
-
-      var timeBadge = document.createElement('span');
-      if(t.jam){
-        var overdue = !t.done && t.jam < currentTime;
-        timeBadge.className = 'time-badge' + (overdue ? ' overdue' : '');
-        timeBadge.textContent = t.jam;
-      }else{
-        timeBadge.className = 'time-badge empty-slot';
-        timeBadge.textContent = '\u00b7\u00b7:\u00b7\u00b7';
-      }
-      row.appendChild(timeBadge);
-
-      var text = document.createElement('div');
-      text.className = 'row-text' + (t.done ? ' done' : '');
-      text.textContent = t.text;
-      row.appendChild(text);
-
-      if(t.waktu){
-        var tag = document.createElement('span');
-        tag.className = 'tag';
-        tag.textContent = t.waktu;
-        row.appendChild(tag);
-      }
-
-      var del = document.createElement('button');
-      del.className = 'del';
-      del.textContent = '\u00d7';
-      del.title = 'hapus';
-      del.onclick = function(){ deleteTask(t.id); };
-      row.appendChild(del);
-
-      root.appendChild(row);
-    });
+    renderUpcoming();
   }
 
   document.getElementById('taskInput').addEventListener('keydown', function(e){
